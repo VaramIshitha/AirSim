@@ -71,10 +71,13 @@ void APIPCamera::PostInitializeComponents()
     captures_[Utils::toNumeric(ImageType::SurfaceNormals)] =
         UAirBlueprintLib::GetActorComponent<USceneCaptureComponent2D>(this, TEXT("NormalsCaptureComponent"));
 
-    detections_[Utils::toNumeric(ImageType::Scene)] =
-        UAirBlueprintLib::GetActorComponent<UDetectionComponent>(this, TEXT("DetectionComponent"));
-    if (detections_[Utils::toNumeric(ImageType::Scene)]) {
-        detections_[Utils::toNumeric(ImageType::Scene)]->Deactivate();
+    for (unsigned int i = 0; i < imageTypeCount(); ++i) {
+        detections_[i] = NewObject<UDetectionComponent>(this);
+        if (detections_[i]) {
+            detections_[i]->SetupAttachment(captures_[i]);
+            detections_[i]->RegisterComponent();
+            detections_[i]->Deactivate();
+        }
     }
 }
 
@@ -233,6 +236,7 @@ void APIPCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
         //use final color for all calculations
         captures_[image_type] = nullptr;
         render_targets_[image_type] = nullptr;
+        detections_[image_type] = nullptr;
     }
 }
 
@@ -266,8 +270,10 @@ void APIPCamera::setCameraTypeEnabled(ImageType type, bool enabled)
     enableCaptureComponent(type, enabled);
 }
 
-void APIPCamera::setCameraPose(const FTransform& pose)
+void APIPCamera::setCameraPose(const msr::airlib::Pose& relative_pose)
 {
+    FTransform pose = ned_transform_->fromRelativeNed(relative_pose);
+
     FVector position = pose.GetLocation();
     this->SetActorRelativeLocation(pose.GetLocation());
 
@@ -288,6 +294,39 @@ void APIPCamera::setCameraFoV(float fov_degrees)
     }
 
     camera_->SetFieldOfView(fov_degrees);
+}
+
+msr::airlib::CameraInfo APIPCamera::getCameraInfo() const
+{
+    msr::airlib::CameraInfo camera_info;
+
+    camera_info.pose.position = ned_transform_->toLocalNed(this->GetActorLocation());
+    camera_info.pose.orientation = ned_transform_->toNed(this->GetActorRotation().Quaternion());
+    camera_info.fov = camera_->FieldOfView;
+    camera_info.proj_mat = getProjectionMatrix(ImageType::Scene);
+    return camera_info;
+}
+
+std::vector<float> APIPCamera::getDistortionParams() const
+{
+    std::vector<float> param_values(5, 0.0);
+
+    auto getParamValue = [this](const auto& name, float& val) {
+        distortion_param_instance_->GetScalarParameterValue(FName(name), val);
+    };
+
+    getParamValue(TEXT("K1"), param_values[0]);
+    getParamValue(TEXT("K2"), param_values[1]);
+    getParamValue(TEXT("K3"), param_values[2]);
+    getParamValue(TEXT("P1"), param_values[3]);
+    getParamValue(TEXT("P2"), param_values[4]);
+
+    return param_values;
+}
+
+void APIPCamera::setDistortionParam(const std::string& param_name, float value)
+{
+    distortion_param_instance_->SetScalarParameterValue(FName(param_name.c_str()), value);
 }
 
 void APIPCamera::setupCameraFromSettings(const APIPCamera::CameraSetting& camera_setting, const NedTransform& ned_transform)
