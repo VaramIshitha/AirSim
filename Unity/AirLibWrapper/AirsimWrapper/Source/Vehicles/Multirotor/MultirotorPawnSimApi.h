@@ -30,6 +30,7 @@ public:
     virtual void reportState(StateReporter& reporter) override;
     virtual UpdatableObject* getPhysicsBody() override;
     virtual void setPose(const Pose& pose, bool ignore_collision) override;
+    virtual void setKinematics(const msr::airlib::Kinematics::State& state, bool ignore_collision) override;
 
     msr::airlib::MultirotorApiBase* getVehicleApi() const
     {
@@ -50,7 +51,7 @@ private:
     } pending_pose_status_;
 
     //show info on collision response from physics engine
-    CollisionResponse collision_response;
+    msr::airlib::CollisionResponse collision_response;
 
     //when pose needs to set from non-physics thread, we set it as pending
     bool pending_pose_collisions_;

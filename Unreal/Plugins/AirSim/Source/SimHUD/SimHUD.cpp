@@ -22,9 +22,12 @@ void ASimHUD::BeginPlay()
 
     try {
         UAirBlueprintLib::OnBeginPlay();
+        initializeSettings();
         loadLevel();
 
-        initializeSettings();
+        // Prevent a MavLink connection being established if changing levels
+        if (map_changed_) return;
+
         setUnrealEngineSettings();
         createSimMode();
         createMainWidget();
@@ -88,41 +91,7 @@ void ASimHUD::inputEventToggleHelp()
 
 void ASimHUD::inputEventToggleTrace()
 {
-    simmode_->getVehicleSimApi()->toggleTrace();
-}
-
-ASimHUD::ImageType ASimHUD::getSubwindowCameraType(int window_index)
-{
-    //TODO: index check
-    return getSubWindowSettings().at(window_index).image_type;
-}
-
-void ASimHUD::setSubwindowCameraType(int window_index, ImageType type)
-{
-    getSubWindowSettings().at(window_index).image_type = type;
-    updateWidgetSubwindowVisibility();
-}
-
-APIPCamera* ASimHUD::getSubwindowCamera(int window_index)
-{
-    return subwindow_cameras_[window_index]; //TODO: index check
-}
-
-void ASimHUD::setSubwindowCamera(int window_index, APIPCamera* camera)
-{
-    subwindow_cameras_[window_index] = camera; //TODO: index check
-    updateWidgetSubwindowVisibility();
-}
-
-bool ASimHUD::getSubwindowVisible(int window_index)
-{
-    return getSubWindowSettings().at(window_index).visible;
-}
-
-void ASimHUD::setSubwindowVisible(int window_index, bool is_visible)
-{
-    getSubWindowSettings().at(window_index).visible = is_visible;
-    updateWidgetSubwindowVisibility();
+    simmode_->toggleTraceAll();
 }
 
 void ASimHUD::updateWidgetSubwindowVisibility()
@@ -133,8 +102,11 @@ void ASimHUD::updateWidgetSubwindowVisibility()
 
         bool is_visible = getSubWindowSettings().at(window_index).visible && camera != nullptr;
 
-        if (camera != nullptr)
+        if (camera != nullptr) {
             camera->setCameraTypeEnabled(camera_type, is_visible);
+            //sub-window captures don't count as a request, set bCaptureEveryFrame and bCaptureOnMovement to display so we can show correctly the subwindow
+            camera->setCameraTypeUpdate(camera_type, false);
+        }
 
         widget_->setSubwindowVisibility(window_index,
                                         is_visible,
@@ -147,22 +119,25 @@ bool ASimHUD::isWidgetSubwindowVisible(int window_index)
     return widget_->getSubwindowVisibility(window_index) != 0;
 }
 
+void ASimHUD::toggleSubwindowVisibility(int window_index)
+{
+    getSubWindowSettings().at(window_index).visible = !getSubWindowSettings().at(window_index).visible;
+    updateWidgetSubwindowVisibility();
+}
+
 void ASimHUD::inputEventToggleSubwindow0()
 {
-    getSubWindowSettings().at(0).visible = !getSubWindowSettings().at(0).visible;
-    updateWidgetSubwindowVisibility();
+    toggleSubwindowVisibility(0);
 }
 
 void ASimHUD::inputEventToggleSubwindow1()
 {
-    getSubWindowSettings().at(1).visible = !getSubWindowSettings().at(1).visible;
-    updateWidgetSubwindowVisibility();
+    toggleSubwindowVisibility(1);
 }
 
 void ASimHUD::inputEventToggleSubwindow2()
 {
-    getSubWindowSettings().at(2).visible = !getSubWindowSettings().at(2).visible;
-    updateWidgetSubwindowVisibility();
+    toggleSubwindowVisibility(2);
 }
 
 void ASimHUD::inputEventToggleAll()
@@ -281,11 +256,9 @@ std::string ASimHUD::getSimModeFromUser()
 
 void ASimHUD::loadLevel()
 {
-    if (AirSimSettings::singleton().level_name != "")
-        UAirBlueprintLib::RunCommandOnGameThread([&]() { UAirBlueprintLib::loadLevel(this->GetWorld(), FString(AirSimSettings::singleton().level_name.c_str())); }, true);
-    else
-        UAirBlueprintLib::RunCommandOnGameThread([&]() { UAirBlueprintLib::loadLevel(this->GetWorld(), FString("Blocks")); }, true);
+    UAirBlueprintLib::RunCommandOnGameThread([&]() { this->map_changed_ = UAirBlueprintLib::loadLevel(this->GetWorld(), FString(AirSimSettings::singleton().level_name.c_str())); }, true);
 }
+
 void ASimHUD::createSimMode()
 {
     std::string simmode_name = AirSimSettings::singleton().simmode_name;
@@ -365,33 +338,27 @@ bool ASimHUD::getSettingsText(std::string& settingsText)
 }
 
 // Attempts to parse the settings file path or the settings text from the command line
-// Looks for the flag "--settings". If it exists, settingsText will be set to the value.
-// Example (Path): AirSim.exe --settings "C:\path\to\settings.json"
-// Example (Text): AirSim.exe -s '{"foo" : "bar"}' -> settingsText will be set to {"foo": "bar"}
+// Looks for the flag "-settings=". If it exists, settingsText will be set to the value.
+// Example (Path): AirSim.exe -settings="C:\path\to\settings.json"
+// Example (Text): AirSim.exe -settings={"foo":"bar"} -> settingsText will be set to {"foo":"bar"}
 // Returns true if the argument is present, false otherwise.
 bool ASimHUD::getSettingsTextFromCommandLine(std::string& settingsText)
 {
-
-    bool found = false;
-    FString settingsTextFString;
     const TCHAR* commandLineArgs = FCommandLine::Get();
+    FString settingsJsonFString;
 
-    if (FParse::Param(commandLineArgs, TEXT("-settings"))) {
-        FString commandLineArgsFString = FString(commandLineArgs);
-        int idx = commandLineArgsFString.Find(TEXT("-settings"));
-        FString settingsJsonFString = commandLineArgsFString.RightChop(idx + 10);
-
-        if (readSettingsTextFromFile(settingsJsonFString.TrimQuotes(), settingsText)) {
+    if (FParse::Value(commandLineArgs, TEXT("-settings="), settingsJsonFString, false)) {
+        if (readSettingsTextFromFile(settingsJsonFString, settingsText)) {
             return true;
         }
-
-        if (FParse::QuotedString(*settingsJsonFString, settingsTextFString)) {
-            settingsText = std::string(TCHAR_TO_UTF8(*settingsTextFString));
-            found = true;
+        else {
+            UAirBlueprintLib::LogMessageString("Loaded settings from commandline: ", TCHAR_TO_UTF8(*settingsJsonFString), LogDebugLevel::Informational);
+            settingsText = TCHAR_TO_UTF8(*settingsJsonFString);
+            return true;
         }
     }
 
-    return found;
+    return false;
 }
 
 bool ASimHUD::readSettingsTextFromFile(const FString& settingsFilepath, std::string& settingsText)

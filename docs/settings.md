@@ -3,13 +3,13 @@
 ## Where are Settings Stored?
 AirSim is searching for the settings definition in the following order. The first match will be used:
 
-1. Looking at the (absolute) path specified by the `--settings` command line argument.
-For example, in Windows: `AirSim.exe --settings 'C:\path\to\settings.json'`
-In Linux `./Blocks.sh --settings '/home/$USER/path/to/settings.json'`
+1. Looking at the (absolute) path specified by the `-settings` command line argument.
+For example, in Windows: `AirSim.exe -settings="C:\path\to\settings.json"`
+In Linux `./Blocks.sh -settings="/home/$USER/path/to/settings.json"`
 
-2. Looking for a json document passed as a command line argument by the `--settings` argument.
-For example, in Windows: `AirSim.exe --settings '{"foo" : "bar"}'`
-In Linux `./Blocks.sh --settings '{"foo" : "bar"}'`
+2. Looking for a json document passed as a command line argument by the `-settings` argument.
+For example, in Windows: `AirSim.exe -settings={"foo":"bar"}`
+In Linux `./Blocks.sh -settings={"foo":"bar"}`
 
 3. Looking in the folder of the executable for a file called `settings.json`.
 This will be a deep location where the actual executable of the Editor or binary is stored.
@@ -51,6 +51,7 @@ Below are complete list of settings available along with their default values. I
   "ApiServerPort": 41451,
   "RecordUIVisible": true,
   "LogMessagesVisible": true,
+  "ShowLosDebugLines": false,
   "ViewMode": "",
   "RpcEnabled": true,
   "EngineSound": true,
@@ -117,7 +118,15 @@ Below are complete list of settings available along with their default values. I
       "Pitch": NaN, "Roll": NaN, "Yaw": NaN
     },
     "X": NaN, "Y": NaN, "Z": NaN,
-    "Pitch": NaN, "Roll": NaN, "Yaw": NaN
+    "Pitch": NaN, "Roll": NaN, "Yaw": NaN,
+    "UnrealEngine": {
+      "PixelFormatOverride": [
+        {
+          "ImageType": 0,
+          "PixelFormat": 0
+        }
+      ]
+    }
   },
   "OriginGeopoint": {
     "Latitude": 47.641468,
@@ -274,7 +283,9 @@ For example, the `Cameras` element below records scene & segmentation images for
     { "CameraName": "0", "ImageType": 5, "PixelsAsFloat": false, "VehicleName": "Car1", "Compress": true },
     { "CameraName": "0", "ImageType": 0, "PixelsAsFloat": false, "VehicleName": "Car2", "Compress": true }
 ]
-``` 
+```
+
+Check out [Modifying Recording Data](modify_recording_data.md) for details on how to modify the kinematics data being recorded.
 
 ## ClockSpeed
 This setting allows you to set the speed of simulation clock with respect to wall clock. For example, value of 5.0 would mean simulation clock has 5 seconds elapsed when wall clock has 1 second elapsed (i.e. simulation is running faster). The value of 0.1 means that simulation clock is 10X slower than wall clock. The value of 1 means simulation is running in real time. It is important to realize that quality of simulation may decrease as the simulation clock runs faster. You might see artifacts like object moving past obstacles because collision is not detected. However slowing down simulation clock (i.e. values < 1.0) generally improves the quality of simulation.
@@ -311,7 +322,7 @@ The `CaptureSettings` determines how different image types such as scene, depth,
 For explanation of other settings, please see [this article](https://docs.unrealengine.com/latest/INT/Engine/Rendering/PostProcessEffects/AutomaticExposure/).
 
 ### NoiseSettings
-The `NoiseSettings` allows to add noise to the specified image type with a goal of simulating camera sensor noise, interference and other artifacts. By default no noise is added, i.e., `Enabled: false`. If you set `Enabled: true` then following different types of noise and interference artifacts are enabled, each can be further tuned using setting. The noise effects are implemented as shader created as post processing material in Unreal Engine called [CameraSensorNoise](https://github.com/Microsoft/AirSim/blob/master/Unreal/Plugins/AirSim/Content/HUDAssets/CameraSensorNoise.uasset).
+The `NoiseSettings` allows to add noise to the specified image type with a goal of simulating camera sensor noise, interference and other artifacts. By default no noise is added, i.e., `Enabled: false`. If you set `Enabled: true` then following different types of noise and interference artifacts are enabled, each can be further tuned using setting. The noise effects are implemented as shader created as post processing material in Unreal Engine called [CameraSensorNoise](https://github.com/Microsoft/AirSim/blob/main/Unreal/Plugins/AirSim/Content/HUDAssets/CameraSensorNoise.uasset).
 
 Demo of camera noise and interference simulation:
 
@@ -345,6 +356,10 @@ This adds fluctuations on horizontal line.
 ### Gimbal
 The `Gimbal` element allows to freeze camera orientation for pitch, roll and/or yaw. This setting is ignored unless `ImageType` is -1. The `Stabilization` is defaulted to 0 meaning no gimbal i.e. camera orientation changes with body orientation on all axis. The value of 1 means full stabilization. The value between 0 to 1 acts as a weight for fixed angles specified (in degrees, in world-frame) in `Pitch`, `Roll` and `Yaw` elements and orientation of the vehicle body. When any of the angles is omitted from json or set to NaN, that angle is not stabilized (i.e. it moves along with vehicle body).
 
+### UnrealEngine
+This element contains settings specific to the Unreal Engine. These will be ignored in the Unity project.
+* `PixelFormatOverride`: This contains a list of elements that have both a `ImageType` and `PixelFormat` setting. Each element allows you to override the default pixel format of the UTextureRenderTarget2D object instantiated for the capture specified by the `ImageType` setting. Specifying this element allows you to prevent crashes caused by unexpected pixel formats (see [#4120](https://github.com/microsoft/AirSim/issues/4120) and [#4339](https://github.com/microsoft/AirSim/issues/4339) for examples of these crashes). A full list of pixel formats can be viewed [here](https://docs.unrealengine.com/4.27/en-US/API/Runtime/Core/EPixelFormat/).
+
 ## External Cameras
 This element allows specifying cameras which are separate from the cameras attached to the vehicle, such as a CCTV camera. These are fixed cameras, and don't move along with the vehicles. The key in the element is the name of the camera, and the value i.e. settings are the same as `CameraDefaults` described above. All the camera APIs work with external cameras, including capturing images, changing the pose, etc by passing the parameter `external=True` in the API call.
 
@@ -353,7 +368,22 @@ Each simulation mode will go through the list of vehicles specified in this sett
 
 ### Common Vehicle Setting
 - `VehicleType`: This could be any one of the following - `PhysXCar`, `SimpleFlight`, `PX4Multirotor`, `ComputerVision`, `ArduCopter` & `ArduRover`. There is no default value therefore this element must be specified.
-- `PawnPath`: This allows to override the pawn blueprint to use for the vehicle. For example, you may create new pawn blueprint derived from ACarPawn for a warehouse robot in your own project outside the AirSim code and then specify its path here. See also [PawnPaths](#PawnPaths).
+- `PawnPath`: This allows to override the pawn blueprint to use for the vehicle. For example, you may create new pawn blueprint derived from ACarPawn for a warehouse robot in your own project outside the AirSim code and then specify its path here. See also [PawnPaths](settings.md#PawnPaths). Note that you have to specify your custom pawn blueprint class path inside the global `PawnPaths` object using your proprietarily defined object name, and quote that name inside the `Vehicles` setting. For example,
+```json
+    {
+      ...
+      "PawnPaths": {
+        "CustomPawn": {"PawnBP": "Class'/Game/Assets/Blueprints/MyPawn.MyPawn_C'"}
+      },
+      "Vehicles": {
+        "MyVehicle": {
+          "VehicleType": ...,
+          "PawnPath": "CustomPawn",
+          ...
+        }
+      }
+    }
+```
 - `DefaultVehicleState`: Possible value for multirotors is `Armed` or `Disarmed`.
 - `AutoCreate`: If true then this vehicle would be spawned (if supported by selected sim mode).
 - `RC`: This sub-element allows to specify which remote controller to use for vehicle using `RemoteControlID`. The value of -1 means use keyboard (not supported yet for multirotors). The value >= 0 specifies one of many remote controllers connected to the system. The list of available RCs can be seen in Game Controllers panel in Windows, for example.
@@ -468,7 +498,7 @@ PX4 connection. See [Setting up PX4 Software-in-Loop](px4_sitl.md) for an exampl
 
 ### Using ArduPilot
 
-[ArduPilot](https://ardupilot.org/) Copter & Rover vehicles are supported in latest AirSim master & releases `v1.3.0` and later. For settings and how to use, please see [ArduPilot SITL with AirSim](https://ardupilot.org/dev/docs/sitl-with-airsim.html)
+[ArduPilot](https://ardupilot.org/) Copter & Rover vehicles are supported in latest AirSim main branch & releases `v1.3.0` and later. For settings and how to use, please see [ArduPilot SITL with AirSim](https://ardupilot.org/dev/docs/sitl-with-airsim.html)
 
 ## Other Settings
 

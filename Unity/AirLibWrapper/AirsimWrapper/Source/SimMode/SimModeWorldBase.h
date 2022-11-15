@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SimModeBase.h"
+#include "physics/ExternalPhysicsEngine.hpp"
 #include "physics/FastPhysicsEngine.hpp"
 #include "physics/PhysicsWorld.hpp"
 
@@ -26,7 +27,7 @@ protected:
     void initializeForPlay();
 
 public:
-    SimModeWorldBase(std::string multiRotorName, int port_number);
+    SimModeWorldBase(int port_number);
     virtual void BeginPlay() override;
     virtual void EndPlay() override;
     virtual void Tick(float DeltaSeconds) override;

@@ -34,13 +34,6 @@ public:
     void inputEventToggleSubwindow2();
     void inputEventToggleAll();
 
-    ImageType getSubwindowCameraType(int window_index);
-    void setSubwindowCameraType(int window_index, ImageType type);
-    APIPCamera* getSubwindowCamera(int window_index);
-    void setSubwindowCamera(int window_index, APIPCamera* camera);
-    bool getSubwindowVisible(int window_index);
-    void setSubwindowVisible(int window_index, bool is_visible);
-
     ASimHUD();
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -51,6 +44,7 @@ protected:
     void toggleRecordHandler();
     void updateWidgetSubwindowVisibility();
     bool isWidgetSubwindowVisible(int window_index);
+    void toggleSubwindowVisibility(int window_index);
 
 private:
     void initializeSubWindows();
@@ -79,4 +73,5 @@ private:
     ASimModeBase* simmode_;
 
     APIPCamera* subwindow_cameras_[AirSimSettings::kSubwindowCount];
+    bool map_changed_;
 };

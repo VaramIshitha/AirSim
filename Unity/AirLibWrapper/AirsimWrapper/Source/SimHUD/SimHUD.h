@@ -18,12 +18,8 @@ private:
     std::string getSimModeFromUser();
 
 public:
-    SimHUD(std::string vehicle_name, std::string sime_mode_name, int port_number);
+    SimHUD(std::string sime_mode_name, int port_number);
     SimModeBase* GetSimMode();
-    ImageType getSubwindowCameraType(int window_index);
-    void setSubwindowCameraType(int window_index, ImageType type);
-    bool getSubwindowVisible(int window_index);
-    void setSubwindowVisible(int window_index, bool is_visible);
     virtual void BeginPlay();
     virtual void EndPlay();
     virtual void Tick(float DeltaSeconds);
@@ -31,7 +27,6 @@ public:
 private:
     typedef common_utils::Utils Utils;
     SimModeBase* simmode_;
-    std::string vehicle_name_;
     std::string sim_mode_name_;
     int port_number_;
 
